@@ -12,7 +12,7 @@ namespace HuddleRoom
         {
             try
             {
-                //Thread.MaxNumberOfUserThreads = 20;
+                Thread.MaxNumberOfUserThreads = 40;
             }
             catch (Exception e)
             {
