@@ -13,10 +13,7 @@ namespace HuddleRoom
         private Am300 _dmRx;
         private DmTx201C _dmTx;
         private GlsOdtCCn _occSensor;
-
-        public bool HasAirMedia { get; private set; }
-        public bool HasLaptop { get; private set; }
-        public bool HasOccSensor { get; private set; }
+        private CTimer _vacancyTimer;
 
         public ControlSystem()
             : base()
@@ -33,15 +30,24 @@ namespace HuddleRoom
 
         public override void InitializeSystem()
         {
-            HasAirMedia = false;
-            HasLaptop = false;
-            HasOccSensor = false;
+            ComPort.ComPortSpec displayComSpec = new ComPort.ComPortSpec {
+                BaudRate = ComPort.eComBaudRates.ComspecBaudRate9600,
+                DataBits = ComPort.eComDataBits.ComspecDataBits8,
+                Parity = ComPort.eComParityType.ComspecParityNone,
+                StopBits = ComPort.eComStopBits.ComspecStopBits1,
+                SoftwareHandshake = ComPort.eComSoftwareHandshakeType.ComspecSoftwareHandshakeNone,
+                HardwareHandShake = ComPort.eComHardwareHandshakeType.ComspecHardwareHandshakeNone
+            };
 
             try
             {
+                _vacancyTimer = new CTimer(OnRoomVacantTimeout, Timeout.Infinite);
+
                 if (this.SupportsEthernet)
                 {
                     _dmRx = new Am300(0x15, this);
+                    _dmRx.ComPorts[1].SetComPortSpec(displayComSpec);
+                    _dmRx.ComPorts[1].SerialDataReceived += OnDisplayDataReceived;
                     if (_dmRx.Register() != eDeviceRegistrationUnRegistrationResponse.Success)
                         ErrorLog.Error("Unable to register {0} on IP ID {1}!", _dmRx.Name, _dmRx.ID);
 
@@ -53,6 +59,7 @@ namespace HuddleRoom
                 if (this.SupportsCresnet)
                 {
                     _occSensor = new GlsOdtCCn(0x97, this);
+                    _occSensor.GlsOccupancySensorChange += OnOccupancySensorChange;
                     if (_occSensor.Register() != eDeviceRegistrationUnRegistrationResponse.Success)
                         ErrorLog.Error("Unable to register {0} on Cresnet ID {1}!", _occSensor.Name, _occSensor.ID);
                 }
@@ -60,6 +67,64 @@ namespace HuddleRoom
             catch (Exception e)
             {
                 ErrorLog.Error("Error in InitializeSystem: {0}", e.Message);
+            }
+        }
+
+        private void OnOccupancySensorChange(GlsOccupancySensorBase device, GlsOccupancySensorChangeEventArgs args)
+        {
+            switch (args.EventId)
+            {
+                case GlsOccupancySensorBase.RoomOccupiedFeedbackEventId:
+                    _vacancyTimer.Stop();
+                    TurnSystemOn();
+                    break;
+                case GlsOccupancySensorBase.RoomVacantFeedbackEventId:
+                    _vacancyTimer.Reset(15 * 60 * 60 * 1000); // 15 minutes (in ms)
+                    break;
+            }
+        }
+
+        private void OnDisplayDataReceived(ComPort port, ComPortSerialDataEventArgs args)
+        {
+            // TODO
+        }
+
+        private void OnRoomVacantTimeout(Object o)
+        {
+            TurnSystemOff();
+        }
+
+        public void TurnSystemOn()
+        {
+            _dmRx.ComPorts[1].Send("POWR1   \r");
+        }
+
+        public void TurnSystemOff()
+        {
+            _dmRx.ComPorts[1].Send("POWR0   \r");
+        }
+
+        public void ShowAirMedia()
+        {
+            try
+            {
+                _dmRx.DisplayControl.VideoOut = AmX00DisplayControl.eAirMediaX00VideoSource.AirMedia;
+            }
+            catch (Exception e)
+            {
+                ErrorLog.Error("Exception in ShowAirMedia: {0}", e.Message);
+            }
+        }
+
+        public void ShowLaptop()
+        {
+            try
+            {
+                _dmRx.DisplayControl.VideoOut = AmX00DisplayControl.eAirMediaX00VideoSource.DM;
+            }
+            catch (Exception e)
+            {
+                ErrorLog.Error("Exception in ShowLaptop: {0}", e.Message);
             }
         }
     }
