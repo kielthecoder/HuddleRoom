@@ -3,6 +3,7 @@ using Crestron.SimplSharp;
 using Crestron.SimplSharpPro;
 using Crestron.SimplSharpPro.CrestronThread;
 using Crestron.SimplSharpPro.DM.AirMedia;
+using Crestron.SimplSharpPro.DM.Endpoints;
 using Crestron.SimplSharpPro.DM.Endpoints.Transmitters;
 using Crestron.SimplSharpPro.GeneralIO;
 
@@ -52,6 +53,8 @@ namespace HuddleRoom
                         ErrorLog.Error("Unable to register {0} on IP ID {1}!", _dmRx.Name, _dmRx.ID);
 
                     _dmTx = new DmTx201C(0x14, this);
+                    _dmTx.HdmiInput.InputStreamChange += OnLaptopHDMI;
+                    _dmTx.VgaInput.InputStreamChange += OnLaptopVGA;
                     if (_dmTx.Register() != eDeviceRegistrationUnRegistrationResponse.Success)
                         ErrorLog.Error("Unable to register {0} on IP ID {1}!", _dmTx.Name, _dmTx.ID);
                 }
@@ -92,6 +95,38 @@ namespace HuddleRoom
         private void OnRoomVacantTimeout(Object o)
         {
             TurnSystemOff();
+        }
+
+        private void OnLaptopHDMI(EndpointInputStream inputStream, EndpointInputStreamEventArgs args)
+        {
+            var hdmiStream = inputStream as EndpointHdmiInput;
+
+            switch (args.EventId)
+            {
+                case EndpointInputStreamEventIds.SyncDetectedFeedbackEventId:
+                    if (hdmiStream.SyncDetectedFeedback.BoolValue)
+                        ShowLaptop();
+                    else
+                        ShowAirMedia();
+
+                    break;
+            }
+        }
+
+        private void OnLaptopVGA(EndpointInputStream inputStream, EndpointInputStreamEventArgs args)
+        {
+            var vgaStream = inputStream as EndpointVgaInput;
+
+            switch (args.EventId)
+            {
+                case EndpointInputStreamEventIds.SyncDetectedFeedbackEventId:
+                    if (vgaStream.SyncDetectedFeedback.BoolValue)
+                        ShowLaptop();
+                    else
+                        ShowAirMedia();
+
+                    break;
+            }
         }
 
         public void TurnSystemOn()
