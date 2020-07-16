@@ -15,6 +15,7 @@ namespace HuddleRoom
         private DmTx201C _dmTx;
         private GlsOdtCCn _occSensor;
         private CTimer _vacancyTimer;
+        private Display _display;
 
         public ControlSystem()
             : base()
@@ -47,8 +48,7 @@ namespace HuddleRoom
                 if (this.SupportsEthernet)
                 {
                     _dmRx = new Am300(0x15, this);
-                    _dmRx.ComPorts[1].SetComPortSpec(displayComSpec);
-                    _dmRx.ComPorts[1].SerialDataReceived += OnDisplayDataReceived;
+                    _display = new Display(_dmRx.ComPorts[1], displayComSpec);
                     if (_dmRx.Register() != eDeviceRegistrationUnRegistrationResponse.Success)
                         ErrorLog.Error("Unable to register {0} on IP ID {1}!", _dmRx.Name, _dmRx.ID);
 
@@ -85,11 +85,6 @@ namespace HuddleRoom
                     _vacancyTimer.Reset(15 * 60 * 60 * 1000); // 15 minutes (in ms)
                     break;
             }
-        }
-
-        private void OnDisplayDataReceived(ComPort port, ComPortSerialDataEventArgs args)
-        {
-            // TODO
         }
 
         private void OnRoomVacantTimeout(Object o)
@@ -131,12 +126,12 @@ namespace HuddleRoom
 
         public void TurnSystemOn()
         {
-            _dmRx.ComPorts[1].Send("POWR1   \r");
+            _display.PowerOn();
         }
 
         public void TurnSystemOff()
         {
-            _dmRx.ComPorts[1].Send("POWR0   \r");
+            _display.PowerOff();
         }
 
         public void ShowAirMedia()
