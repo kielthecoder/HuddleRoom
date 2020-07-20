@@ -16,6 +16,7 @@ namespace HuddleRoom
         private GlsOdtCCn _occSensor;
         private CTimer _vacancyTimer;
         private Display _display;
+        private AudioVideoSwitcher _switcher;
 
         public ControlSystem()
             : base()
@@ -49,6 +50,7 @@ namespace HuddleRoom
                 {
                     _dmRx = new Am300(0x15, this);
                     _display = new Display(_dmRx.ComPorts[1], displayComSpec);
+                    _switcher = new AirMediaSwitcher(_dmRx);
                     if (_dmRx.Register() != eDeviceRegistrationUnRegistrationResponse.Success)
                         ErrorLog.Error("Unable to register {0} on IP ID {1}!", _dmRx.Name, _dmRx.ID);
 
@@ -95,14 +97,15 @@ namespace HuddleRoom
         private void OnLaptopHDMI(EndpointInputStream inputStream, EndpointInputStreamEventArgs args)
         {
             var hdmiStream = inputStream as EndpointHdmiInput;
+            var switcher = _switcher as AirMediaSwitcher;
 
             switch (args.EventId)
             {
                 case EndpointInputStreamEventIds.SyncDetectedFeedbackEventId:
                     if (hdmiStream.SyncDetectedFeedback.BoolValue)
-                        ShowLaptop();
+                        switcher.Switch(AirMediaInputs.DM);
                     else
-                        ShowAirMedia();
+                        switcher.Switch(AirMediaInputs.AirMedia);
 
                     break;
             }
@@ -111,14 +114,15 @@ namespace HuddleRoom
         private void OnLaptopVGA(EndpointInputStream inputStream, EndpointInputStreamEventArgs args)
         {
             var vgaStream = inputStream as EndpointVgaInput;
+            var switcher = _switcher as AirMediaSwitcher;
 
             switch (args.EventId)
             {
                 case EndpointInputStreamEventIds.SyncDetectedFeedbackEventId:
                     if (vgaStream.SyncDetectedFeedback.BoolValue)
-                        ShowLaptop();
+                        switcher.Switch(AirMediaInputs.DM);
                     else
-                        ShowAirMedia();
+                        switcher.Switch(AirMediaInputs.AirMedia);
 
                     break;
             }
