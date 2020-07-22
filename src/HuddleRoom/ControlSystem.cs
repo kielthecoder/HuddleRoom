@@ -14,9 +14,10 @@ namespace HuddleRoom
         private Am300 _dmRx;
         private DmTx201C _dmTx;
         private GlsOdtCCn _occSensor;
-        private CTimer _vacancyTimer;
+
         private Display _display;
         private AudioVideoSwitcher _switcher;
+        private RoomOccupancy _occupancy;
 
         public ControlSystem()
             : base()
@@ -44,8 +45,6 @@ namespace HuddleRoom
 
             try
             {
-                _vacancyTimer = new CTimer(OnRoomVacantTimeout, Timeout.Infinite);
-
                 if (this.SupportsEthernet)
                 {
                     _dmRx = new Am300(0x15, this);
@@ -64,7 +63,9 @@ namespace HuddleRoom
                 if (this.SupportsCresnet)
                 {
                     _occSensor = new GlsOdtCCn(0x97, this);
-                    _occSensor.GlsOccupancySensorChange += OnOccupancySensorChange;
+                    _occupancy = new RoomOccupancy(_occSensor, 15 * 60 * 60);   // 15 minutes
+                    _occupancy.RoomOccupied = TurnSystemOn;
+                    _occupancy.RoomVacant = TurnSystemOff;
                     if (_occSensor.Register() != eDeviceRegistrationUnRegistrationResponse.Success)
                         ErrorLog.Error("Unable to register {0} on Cresnet ID {1}!", _occSensor.Name, _occSensor.ID);
                 }
@@ -73,25 +74,6 @@ namespace HuddleRoom
             {
                 ErrorLog.Error("Error in InitializeSystem: {0}", e.Message);
             }
-        }
-
-        private void OnOccupancySensorChange(GlsOccupancySensorBase device, GlsOccupancySensorChangeEventArgs args)
-        {
-            switch (args.EventId)
-            {
-                case GlsOccupancySensorBase.RoomOccupiedFeedbackEventId:
-                    _vacancyTimer.Stop();
-                    TurnSystemOn();
-                    break;
-                case GlsOccupancySensorBase.RoomVacantFeedbackEventId:
-                    _vacancyTimer.Reset(15 * 60 * 60 * 1000); // 15 minutes (in ms)
-                    break;
-            }
-        }
-
-        private void OnRoomVacantTimeout(Object o)
-        {
-            TurnSystemOff();
         }
 
         private void OnLaptopHDMI(EndpointInputStream inputStream, EndpointInputStreamEventArgs args)
@@ -136,30 +118,6 @@ namespace HuddleRoom
         public void TurnSystemOff()
         {
             _display.PowerOff();
-        }
-
-        public void ShowAirMedia()
-        {
-            try
-            {
-                _dmRx.DisplayControl.VideoOut = AmX00DisplayControl.eAirMediaX00VideoSource.AirMedia;
-            }
-            catch (Exception e)
-            {
-                ErrorLog.Error("Exception in ShowAirMedia: {0}", e.Message);
-            }
-        }
-
-        public void ShowLaptop()
-        {
-            try
-            {
-                _dmRx.DisplayControl.VideoOut = AmX00DisplayControl.eAirMediaX00VideoSource.DM;
-            }
-            catch (Exception e)
-            {
-                ErrorLog.Error("Exception in ShowLaptop: {0}", e.Message);
-            }
         }
     }
 }
