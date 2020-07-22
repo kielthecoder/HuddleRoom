@@ -14,7 +14,10 @@ namespace HuddleRoom
         private Am300 _dmRx;
         private DmTx201C _dmTx;
         private GlsOdtCCn _occSensor;
-        private CTimer _vacancyTimer;
+
+        private Display _display;
+        private AudioVideoSwitcher _switcher;
+        private RoomOccupancy _occupancy;
 
         public ControlSystem()
             : base()
@@ -42,13 +45,11 @@ namespace HuddleRoom
 
             try
             {
-                _vacancyTimer = new CTimer(OnRoomVacantTimeout, Timeout.Infinite);
-
                 if (this.SupportsEthernet)
                 {
                     _dmRx = new Am300(0x15, this);
-                    _dmRx.ComPorts[1].SetComPortSpec(displayComSpec);
-                    _dmRx.ComPorts[1].SerialDataReceived += OnDisplayDataReceived;
+                    _display = new Display(_dmRx.ComPorts[1], displayComSpec);
+                    _switcher = new AirMediaSwitcher(_dmRx);
                     if (_dmRx.Register() != eDeviceRegistrationUnRegistrationResponse.Success)
                         ErrorLog.Error("Unable to register {0} on IP ID {1}!", _dmRx.Name, _dmRx.ID);
 
@@ -62,7 +63,9 @@ namespace HuddleRoom
                 if (this.SupportsCresnet)
                 {
                     _occSensor = new GlsOdtCCn(0x97, this);
-                    _occSensor.GlsOccupancySensorChange += OnOccupancySensorChange;
+                    _occupancy = new RoomOccupancy(_occSensor, 15 * 60 * 60);   // 15 minutes
+                    _occupancy.RoomOccupied = TurnSystemOn;
+                    _occupancy.RoomVacant = TurnSystemOff;
                     if (_occSensor.Register() != eDeviceRegistrationUnRegistrationResponse.Success)
                         ErrorLog.Error("Unable to register {0} on Cresnet ID {1}!", _occSensor.Name, _occSensor.ID);
                 }
@@ -73,41 +76,18 @@ namespace HuddleRoom
             }
         }
 
-        private void OnOccupancySensorChange(GlsOccupancySensorBase device, GlsOccupancySensorChangeEventArgs args)
-        {
-            switch (args.EventId)
-            {
-                case GlsOccupancySensorBase.RoomOccupiedFeedbackEventId:
-                    _vacancyTimer.Stop();
-                    TurnSystemOn();
-                    break;
-                case GlsOccupancySensorBase.RoomVacantFeedbackEventId:
-                    _vacancyTimer.Reset(15 * 60 * 60 * 1000); // 15 minutes (in ms)
-                    break;
-            }
-        }
-
-        private void OnDisplayDataReceived(ComPort port, ComPortSerialDataEventArgs args)
-        {
-            // TODO
-        }
-
-        private void OnRoomVacantTimeout(Object o)
-        {
-            TurnSystemOff();
-        }
-
         private void OnLaptopHDMI(EndpointInputStream inputStream, EndpointInputStreamEventArgs args)
         {
             var hdmiStream = inputStream as EndpointHdmiInput;
+            var switcher = _switcher as AirMediaSwitcher;
 
             switch (args.EventId)
             {
                 case EndpointInputStreamEventIds.SyncDetectedFeedbackEventId:
                     if (hdmiStream.SyncDetectedFeedback.BoolValue)
-                        ShowLaptop();
+                        switcher.Switch(AirMediaInputs.DM);
                     else
-                        ShowAirMedia();
+                        switcher.Switch(AirMediaInputs.AirMedia);
 
                     break;
             }
@@ -116,14 +96,15 @@ namespace HuddleRoom
         private void OnLaptopVGA(EndpointInputStream inputStream, EndpointInputStreamEventArgs args)
         {
             var vgaStream = inputStream as EndpointVgaInput;
+            var switcher = _switcher as AirMediaSwitcher;
 
             switch (args.EventId)
             {
                 case EndpointInputStreamEventIds.SyncDetectedFeedbackEventId:
                     if (vgaStream.SyncDetectedFeedback.BoolValue)
-                        ShowLaptop();
+                        switcher.Switch(AirMediaInputs.DM);
                     else
-                        ShowAirMedia();
+                        switcher.Switch(AirMediaInputs.AirMedia);
 
                     break;
             }
@@ -131,36 +112,12 @@ namespace HuddleRoom
 
         public void TurnSystemOn()
         {
-            _dmRx.ComPorts[1].Send("POWR1   \r");
+            _display.PowerOn();
         }
 
         public void TurnSystemOff()
         {
-            _dmRx.ComPorts[1].Send("POWR0   \r");
-        }
-
-        public void ShowAirMedia()
-        {
-            try
-            {
-                _dmRx.DisplayControl.VideoOut = AmX00DisplayControl.eAirMediaX00VideoSource.AirMedia;
-            }
-            catch (Exception e)
-            {
-                ErrorLog.Error("Exception in ShowAirMedia: {0}", e.Message);
-            }
-        }
-
-        public void ShowLaptop()
-        {
-            try
-            {
-                _dmRx.DisplayControl.VideoOut = AmX00DisplayControl.eAirMediaX00VideoSource.DM;
-            }
-            catch (Exception e)
-            {
-                ErrorLog.Error("Exception in ShowLaptop: {0}", e.Message);
-            }
+            _display.PowerOff();
         }
     }
 }
